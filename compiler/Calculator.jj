@@ -1,0 +1,76 @@
+options {
+    STATIC = false;
+    IGNORE_CASE = true;
+}
+
+PARSER_BEGIN(ExpressionParser)
+package com.jsimples.compiler;
+import java.io.StringReader;
+
+public class ExpressionParser {
+    private double result = 0.0;
+
+    public double parseExpression(String expression) throws ParseException {
+        String cleanedExpression = expression.replaceAll("\\s+", "");
+        ReInit(new StringReader(cleanedExpression));
+        try {
+            Start();
+            return result;
+        } catch (ParseException e) {
+            throw new ParseException("Erro no tokenizer: " + e.getMessage());
+        }
+    }
+
+    public void setResult(double value) {
+        this.result = value;
+    }
+}
+PARSER_END(ExpressionParser)
+
+// Ignorar espaços em branco
+SKIP : {
+    " "
+  | "\t"
+  | "\r"
+  | "\n"
+}
+
+TOKEN : {
+    < NUMBER: (["0"-"9"])+ ("." (["0"-"9"])+)? >
+  | < PLUS: "m" >
+  | < MINUS: "-" >
+  | < MULTIPLY: "*" >
+  | < DIVIDE: "/" >
+}
+
+void Start() : {double value;} {
+    value = Expression() < EOF >
+    { setResult(value); }
+}
+
+double Expression() : {Token a, op, b;} {
+    a = < NUMBER > {
+        this.result += Double.parseDouble(a.image);
+        System.out.println("[COMPILER] Teste #1");
+    }
+    (
+        op = < PLUS > b = < NUMBER > {
+            this.result += Double.parseDouble(b.image);
+            System.out.println("[COMPILER] Teste #2");
+        }
+      | op = < MINUS > b = < NUMBER > {
+            this.result -= Double.parseDouble(b.image);
+        }
+      | op = < MULTIPLY > b = < NUMBER > {
+            this.result *= Double.parseDouble(b.image);
+        }
+      | op = < DIVIDE > b = < NUMBER > {
+            if (Double.parseDouble(b.image) != 0) {
+                this.result /= Double.parseDouble(b.image);
+            } else {
+                throw new ParseException("Erro: Divisão por zero!");
+            }
+        }
+    )*
+    { return this.result; }
+}

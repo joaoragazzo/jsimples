@@ -1,0 +1,442 @@
+options {
+    STATIC = false;
+    IGNORE_CASE = false;
+}
+
+PARSER_BEGIN(Simples)
+package com.jsimples.compiler;
+import java.io.StringReader;
+import java.util.HashMap;
+import java.util.Stack;
+
+public class Simples {
+
+    //public abstract class ASTNode {
+    //    protected Integer beginLine;
+    //    protected Integer endLine;
+    //    protected Integer beginColumn;
+    //    protected Integer endColumn;
+    //
+    //    public ASTNode(Token token) {
+    //        this.beginLine = token.beginLine;
+    //        this.endLine = token.endLine;
+    //        this.beginColumn = token.beginColumn;
+    //        this.endColumn = token.endColumn;
+    //    }
+//
+    //    public Integer getBeginLine() { return this.beginLine; }
+    //    public Integer getEndLine() { return this.endLine; }
+    //    public Integer getBeginColumn() { return this.beginColumn; }
+    //    public Integer getEndColumn() { return this.endColumn; }
+    //}
+//
+    //public class ProgramNode extends ASTNode {
+    //    private String name;
+    //}
+
+    public enum VariableType {
+        INTEGER,
+        LOGIC
+    }
+
+    public class Variable {
+        public VariableType type;
+        public Integer address;
+
+        public Variable(VariableType type, Integer address) {
+            this.type = type;
+            this.address = address;
+        } 
+    };
+
+    private String result = "";
+    private HashMap<String, Variable> symbolTable = new HashMap<>();
+    private Integer variableAmount = 0;
+    private VariableType tmpVariableType;
+    private Stack<VariableType> typeStack = new Stack<>();
+    private Stack<Integer> labelStack = new Stack<>();
+    private Stack<Variable> variableStack = new Stack<>();
+    private Integer actualLabel = 0;
+
+    public String parseSimples(String content) throws ParseException {
+        ReInit(new StringReader(content));
+        try {
+            Start();
+            return result;
+        } catch (ParseException e) {
+            throw new ParseException("Erro no tokenizer: " + e.getMessage());
+        }
+    }
+
+    public void insertNewVariable(Token token) throws ParseException {
+        String variableName = token.image;
+        if (this.symbolTable.containsKey(variableName)) {
+            throw new ParseException("ERRO NA LINHA (" + token.beginLine + ":" + token.beginColumn  +"): A variavel " + variableName + " ja foi declarada.");
+        }
+
+        Variable tmpVariable = new Variable(this.tmpVariableType, this.variableAmount);
+        this.symbolTable.put(variableName, tmpVariable);
+        this.variableAmount++;
+    }
+
+    public Variable findVariable(Token token) throws ParseException {
+        String variableName = token.image;
+        if (!this.symbolTable.containsKey(variableName)) {
+            throw new ParseException("ERRO NA LINHA (" + token.beginLine + ":" + token.beginColumn  +"): A variavel " + variableName + " nao foi declarada.");
+        }
+        return symbolTable.get(variableName);
+    }
+
+    public void assertType(VariableType type1, VariableType type2, VariableType result) throws ParseException {
+        VariableType firstStack = this.typeStack.pop();
+        VariableType secondStack = this.typeStack.pop();
+
+        if (firstStack != type1 || secondStack != type2) {
+            throw new ParseException("Incompatibilidade de tipo #1!");
+        }
+
+        this.typeStack.push(result);
+    }
+
+    public void assertType(VariableType wanted) throws ParseException {
+        VariableType actual = this.typeStack.pop();
+
+        if (wanted != actual) {
+            throw new ParseException("Incompatibilidade de tipo #2!");
+        }
+    }
+}
+
+PARSER_END(Simples)
+
+SKIP : {
+    " "
+  | "\t"
+  | "\r"
+  | "\n"
+  | "\r\n"
+}
+
+TOKEN : {
+        < T_PROGRAM:    "programa" >
+    |   < T_START:      "inicio" >
+    |   < T_END:        "fimprograma" >
+    |   < T_INPUT:      "leia" >
+    |   < T_OUTPUT:     "escreva" >
+    |   < T_IF:         "se" >
+    |   < T_SO:         "entao" >
+    |   < T_ELSE:       "senao" >
+    |   < T_ENDIF:      "fimse" >
+    |   < T_WHILE:      "enquanto" >
+    |   < T_DO:         "faca" >
+    |   < T_ENDWHILE:   "fimenquanto" >
+    |   < T_PLUS:       "+" >
+    |   < T_MINUS:      "-" >
+    |   < T_MULTIPLY:   "*" >
+    |   < T_DIVISION:   "div" >
+    |   < T_GT:         ">" >
+    |   < T_LT:         "<" >
+    |   < T_EQ:         "=" >
+    |   < T_AND:        "e" >
+    |   < T_OR:         "ou" >
+    |   < T_NOT:        "nao" >
+    |   < T_ASSIGNMENT: "<-" >
+    |   < T_OPEN:       "(" >
+    |   < T_CLOSE:      ")" >
+    |   < T_INTEGER:    "inteiro" >
+    |   < T_LOGIC:      "logico" >
+    |   < T_TRUE:       "V" >
+    |   < T_FALSE:      "F" >
+    |   < T_NUMBER:     (["0"-"9"])+ ("." (["0"-"9"])+)? >
+    |   < T_IDENTIFIER: ["a"-"z", "A"-"Z", "_"] (["a"-"z", "A"-"Z", "0"-"9", "_"])* >
+    |   < T_NEWLINE:    "\n" | "\r" | "\r\n" >
+} 
+
+void Start() : {} 
+{
+    Header() 
+    Variables()
+    {
+        this.result += "\tAMEM\t" + this.variableAmount + "\n";
+    }
+    < T_START > 
+    CommandList()
+    < T_END >
+    {
+        this.result += "\tDMEM\t" + this.variableAmount + "\n";
+        this.result += "\tFIMP\n"; 
+    } 
+    < EOF >
+}
+
+void Header() : { Token programName; } 
+{
+    < T_PROGRAM >
+    {
+
+    }
+    programName = < T_IDENTIFIER >
+    {
+        this.result += "\tINPP\n";
+    }
+}
+
+void Variables() : {}
+{
+    VariableDeclaration() 
+}
+
+void VariableDeclaration() : {}
+{
+    (
+        Type() VariableList()
+    )*
+}
+
+void VariableList() : { Token identifier; }
+{
+        identifier = < T_IDENTIFIER > 
+        {
+            this.insertNewVariable(identifier);
+        }
+        (
+            identifier = < T_IDENTIFIER >
+            {
+                this.insertNewVariable(identifier);
+            }
+        )*
+}
+
+void Type() : {}
+{
+        < T_INTEGER > { this.tmpVariableType = VariableType.INTEGER; }
+    |   < T_LOGIC >   { this.tmpVariableType = VariableType.LOGIC; }
+}
+
+void CommandList() : {} 
+{
+    (
+        Command()
+    )*
+}
+
+void Command() : {}
+{
+        IO()
+    |   Loop()
+    |   Conditional()
+    |   Assignment()
+}
+
+void Conditional() : { Integer label; }
+{
+    < T_IF > Expression() < T_SO >
+    {
+        assertType(VariableType.LOGIC);
+        this.actualLabel++;
+        this.result += "\tDSVF\t" + this.actualLabel + "\n";
+        this.labelStack.push(actualLabel);
+    } 
+    CommandList() < T_ELSE >
+    {
+        this.actualLabel++;
+        this.result += "\tDSVS\tL" + this.actualLabel + "\n";
+        label = this.labelStack.pop();
+        this.result += "L" + label + "\tNADA\n";
+        this.labelStack.push(actualLabel);
+    }
+    CommandList() < T_ENDIF >
+    {
+        label = this.labelStack.pop();
+        this.result += "L" + label + "\tNADA\n";
+    }
+}
+
+void Assignment() : { Token identifier; Variable variable; }
+{
+    identifier = < T_IDENTIFIER >
+    {
+        variable = findVariable(identifier);
+        this.variableStack.push(variable);
+    } 
+    < T_ASSIGNMENT > Expression() 
+    {
+        variable = variableStack.pop();
+        this.assertType(variable.type);
+        this.result += "\tARZG\t" + variable.address + "\n";
+    }
+}
+
+void Loop() : {}
+{
+    < T_WHILE > 
+    {
+        this.actualLabel++;
+        result += "L" + actualLabel + "\tNADA\n";
+        labelStack.push(this.actualLabel);
+    }
+    Expression() < T_DO > 
+    {
+        assertType(VariableType.LOGIC);
+        this.actualLabel++;
+        result += "\tDSVF\tL" + this.actualLabel + "\n";
+        labelStack.push(this.actualLabel);
+    }
+    CommandList() < T_ENDWHILE >
+    {
+        Integer secondLabel = this.labelStack.pop();
+        Integer firstLabel = this.labelStack.pop();
+        result += "\tDSVS\tL" + firstLabel + "\n";
+        result += "L" + secondLabel + "\tNADA\n";
+    }
+}
+
+void IO() : {}
+{
+        Input()
+    |   Output()
+}
+
+void Input() : { Token identifier; }
+{
+    < T_INPUT > identifier = < T_IDENTIFIER >
+    {
+        Variable variable = findVariable(identifier);
+        this.result += "\tLEIA\n";
+        this.result += "\tARZG\t" + variable.address + "\n";
+    }
+}
+
+void Output() : {}
+{
+    < T_OUTPUT > Expression() 
+    {
+        result += "\tESCR\n";
+    }
+}
+
+void Expression() : {}
+{
+    LogicalExpression()
+}
+
+void LogicalExpression() : {}
+{
+    RelationalExpression()
+    (
+        < T_AND > RelationalExpression()
+        {
+            assertType(VariableType.LOGIC, VariableType.LOGIC, VariableType.LOGIC);
+            result += "\tCONJ\n";
+        }
+        |
+        < T_OR > RelationalExpression()
+        {
+            assertType(VariableType.LOGIC, VariableType.LOGIC, VariableType.LOGIC);
+            result += "\tDISJ\n";
+        }
+    )*
+}
+
+void RelationalExpression() : {}
+{
+    AdditiveExpression()
+    (
+        < T_GT > AdditiveExpression()
+        {
+            assertType(VariableType.INTEGER, VariableType.INTEGER, VariableType.LOGIC);
+            result += "\tCMMA\n";
+        }
+        |
+        < T_LT > AdditiveExpression()
+        {
+            assertType(VariableType.INTEGER, VariableType.INTEGER, VariableType.LOGIC);
+            result += "\tCMME\n";
+        }
+        |
+        < T_EQ > AdditiveExpression()
+        {
+            assertType(VariableType.INTEGER, VariableType.INTEGER, VariableType.LOGIC);
+            result += "\tCMIG\n";
+        }
+    )*
+}
+
+void AdditiveExpression() : {}
+{
+    MultiplicativeExpression()
+    (
+        < T_PLUS > MultiplicativeExpression()
+        {
+            assertType(VariableType.INTEGER, VariableType.INTEGER, VariableType.INTEGER);
+            result += "\tSOMA\n";
+        }
+        |
+        < T_MINUS > MultiplicativeExpression()
+        {
+            assertType(VariableType.INTEGER, VariableType.INTEGER, VariableType.INTEGER);
+            result += "\tSUBT\n";
+        }
+    )*
+}
+
+void MultiplicativeExpression() : {}
+{
+    UnaryExpression()
+    (
+        < T_MULTIPLY > UnaryExpression()
+        {
+            assertType(VariableType.INTEGER, VariableType.INTEGER, VariableType.INTEGER);
+            result += "\tMULT\n";
+        }
+        |
+        < T_DIVISION > UnaryExpression()
+        {
+            assertType(VariableType.INTEGER, VariableType.INTEGER, VariableType.INTEGER);
+            result += "\tDIVI\n";
+        }
+    )*
+}
+
+void UnaryExpression() : {}
+{
+        < T_NOT > UnaryExpression()
+        {
+            assertType(VariableType.LOGIC);
+            result += "\tNEGA\n";
+            typeStack.push(VariableType.LOGIC);
+        }
+        |
+        PrimaryExpression()
+}
+
+void PrimaryExpression() : { Token identifier; }
+{
+        identifier = < T_IDENTIFIER >
+        {
+            Variable variable = findVariable(identifier);
+            result += "\tCRVG\t" + variable.address + "\n";
+            typeStack.push(variable.type);
+        }
+        |
+        < T_TRUE >
+        {
+            result += "\tCRCT\t1\n";
+            typeStack.push(VariableType.LOGIC);
+        }
+        |
+        < T_FALSE >
+        {
+            result += "\tCRCT\t0\n";
+            typeStack.push(VariableType.LOGIC);    
+        }
+        |
+        identifier = < T_NUMBER >
+        {
+            String number = identifier.image;
+            result += "\tCRCT\t" + number + "\n";
+            typeStack.push(VariableType.INTEGER);
+        }
+        |
+        < T_OPEN > Expression() < T_CLOSE >
+}
